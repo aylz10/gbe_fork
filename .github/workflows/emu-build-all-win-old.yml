@@ -1,4 +1,4 @@
-name: "Build emu (Windows)"
+name: "Build emu old (Windows)"
 
 on:
   workflow_call:
@@ -17,14 +17,14 @@ env:
   THIRD_PARTY_BASE_DIR: "third-party"
 
 jobs:
-  deps:
-    name: "Restore or build deps"
-    if: ${{ !cancelled() }}
-    uses: "./.github/workflows/emu-deps-win.yml"
-
+  # deps:
+    # name: "Restore or build deps"
+    # if: ${{ !cancelled() }}
+    # uses: "./.github/workflows/emu-deps-win.yml"
+    
   builds-matrix-win:
     name: "build"
-    needs: ["deps"]
+    # needs: ["deps"]
     runs-on: "windows-2022"
     if: ${{ !cancelled() }}
     continue-on-error: true
@@ -34,18 +34,18 @@ jobs:
       matrix:
         prj: [
             # regular api
-            # "api_regular",
+            "api_regular",
             # (experimental) api + client
-            # "api_experimental",
-            # "steamclient_experimental_stub",
+            "api_experimental",
+            "steamclient_experimental_stub",
             # client (experimental) + loader + extra dll + gameoverlaylib
-            # "steamclient_experimental",
+            "steamclient_experimental",
             "steamclient_experimental_loader",
-            # "steamclient_experimental_extra",
-            # "lib_game_overlay_renderer",
+            "steamclient_experimental_extra",
+            "lib_game_overlay_renderer",
             # tools
-            # "tool_lobby_connect",
-            # "tool_generate_interfaces",
+            "tool_lobby_connect",
+            "tool_generate_interfaces",
           ]
         arch: ["x64", "Win32"]
         cfg: ["debug", "release"]
@@ -89,6 +89,13 @@ jobs:
           ref: "third-party/build/win"
           path: "${{env.THIRD_PARTY_BASE_DIR}}/build/win"
 
+      - name: Unzip tar.gz File # PowerShell
+        run: |
+          $env:PATH += ";C:\Program Files\Git\usr\bin"
+          curl -L -o build_old.tar.gz https://github.com/aylz10/gbe_fork/releases/download/build_old/build_old.tar.gz
+          & "C:\Program Files\Git\usr\bin\tar.exe" -zxvf build_old.tar.gz
+        working-directory: "${{ github.workspace }}"
+
       # generate project files
       - name: "Generate project files"
         shell: "cmd"
@@ -102,11 +109,6 @@ jobs:
         working-directory: "${{ github.workspace }}/build/project/vs2022/win"
         run: |
           msbuild /nologo /target:${{ matrix.prj }} /m:2 /v:n /p:Configuration=${{ matrix.cfg }},Platform=${{ matrix.arch }} gbe.sln
-
-      - name: copy ColdClientLoader.ini
-        run: |
-            Copy-Item -Path tools\steamclient_loader\win\ColdClientLoader.ini -Destination build\win\vs2022\debug\steamclient_experimental\ -ErrorAction SilentlyContinue 
-            Copy-Item -Path tools\steamclient_loader\win\ColdClientLoader.ini -Destination build\win\vs2022\release\steamclient_experimental\ -ErrorAction SilentlyContinue 
 
       # upload artifact/package to github Actions
       - name: "Upload target package"
