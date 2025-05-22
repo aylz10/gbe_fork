@@ -19,6 +19,7 @@
 #define SI_SUPPORT_IOSTREAMS
 #define SI_NO_MBCS
 #include "simpleini/SimpleIni.h"
+#include <regex>
 
 #include "dll/settings_parser.h"
 #include "dll/settings_parser_ufs.h"
@@ -741,6 +742,29 @@ static void parse_encrypted_app_ticket(class Settings *settings_client, class Se
         std::vector<uint8_t> ticket = base64_decode(ticketValue);
         settings_client->customEncryptedAppTicket = ticket;
         settings_server->customEncryptedAppTicket = ticket;
+    }
+}
+
+// user::general::ticket_steamid
+static CSteamID parse_user_ticket_id(class Local_Storage *local_storage)
+{
+    CSteamID user_id((uint64)std::atoll(ini.GetValue("user::general", "ticket_steamid", "0")));
+    if (!user_id.IsValid()) {
+        user_id = parse_user_steam_id(local_storage);
+    }
+
+    return user_id;
+}
+
+// user::general::gate
+static std::string parse_user_gate(class Local_Storage* local_storage)
+{
+    std::string gate =ini.GetValue("user::general", "gate", "0");
+    if (gate.empty() || gate == "0" || !std::regex_match(gate, std::regex(R"(^(\d+)(\|\d+)*$)"))) {
+        return "0";
+    }
+    else {
+        return gate;
     }
 }
 
@@ -1936,6 +1960,10 @@ uint32 create_localstorage_settings(Settings **settings_client_out, Settings **s
     CSteamID alt_steamid = parse_alt_steam_id(local_storage);
     uint32 alt_steamid_count = parse_alt_steamid_count(local_storage);
 
+    // ticket ID
+    CSteamID ticket_id = parse_user_ticket_id(local_storage);
+    // gate
+    std::string gate = parse_user_gate(local_storage);
     // Language
     std::string language(parse_current_language(local_storage));
     // Supported languages, this will change the current language if needed
@@ -1945,8 +1973,8 @@ uint32 create_localstorage_settings(Settings **settings_client_out, Settings **s
     if (steam_offline_mode) {
         PRINT_DEBUG("setting emu to offline mode");
     }
-    Settings *settings_client = new Settings(user_id, CGameID(appid), name, language, steam_offline_mode);
-    Settings *settings_server = new Settings(generate_steam_id_server(), CGameID(appid), name, language, true); // server starts logged out
+    Settings *settings_client = new Settings(user_id, CGameID(appid), name, language, steam_offline_mode, ticket_id, gate);
+    Settings *settings_server = new Settings(generate_steam_id_server(), CGameID(appid), name, language, true, ticket_id, gate); // server starts logged out
 
     settings_client->alt_steamid = alt_steamid;
     settings_client->alt_steamid_count = alt_steamid_count;
