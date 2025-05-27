@@ -860,6 +860,47 @@ static CSteamID parse_user_ticket_id(class Local_Storage *local_storage)
     return user_id;
 }
 
+// user::general::backup_tickets
+static bool backup_tickets(class Local_Storage* local_storage)
+{
+    return ini.GetBoolValue("user::general", "backup_tickets", false);
+}
+
+
+static std::string SteamPath_hkcu3;
+static bool get_registry_SteamPath()
+{
+    PRINT_DEBUG_ENTRY();
+    HKEY Registrykey = { 0 };
+
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Software\\Valve\\Steam", 0, KEY_READ, &Registrykey) == ERROR_SUCCESS) {
+        DWORD Size_hkcu3 = 0;
+        DWORD keyType = REG_SZ;
+
+        // 先查询值的大小
+        if (RegQueryValueExW(Registrykey, L"SteamPath", nullptr, &keyType, nullptr, &Size_hkcu3) == ERROR_SUCCESS) {
+            // 为值分配内存
+            WCHAR* buffer = new WCHAR[Size_hkcu3 / sizeof(WCHAR)];
+
+            // 读取实际值
+            if (RegQueryValueExW(Registrykey, L"SteamPath", nullptr, &keyType, (LPBYTE)buffer, &Size_hkcu3) == ERROR_SUCCESS) {
+                // 转换为UTF-8字符串
+                int requiredSize = WideCharToMultiByte(CP_UTF8, 0, buffer, -1, nullptr, 0, nullptr, nullptr);
+                if (requiredSize > 0) {
+                    SteamPath_hkcu3.resize(requiredSize); // 直接调整大小以容纳字符串
+                    WideCharToMultiByte(CP_UTF8, 0, buffer, -1, &SteamPath_hkcu3[0], requiredSize, nullptr, nullptr);
+                    PRINT_DEBUG("Found previous registry entry for Steam. Path:'%s'", SteamPath_hkcu3.c_str());
+                }
+            }
+
+            delete[] buffer;
+        }
+        RegCloseKey(Registrykey);
+        return true;
+    }
+    return false;
+}
+
 // user::general::gate
 static std::string parse_user_gate(class Local_Storage* local_storage)
 {
@@ -2060,6 +2101,59 @@ static void load_all_config_settings()
 
 }
 
+std::string get_current_datetime() {
+    auto now = std::time(nullptr);
+    std::tm now_tm = *std::localtime(&now);
+    std::ostringstream oss;
+    oss << std::put_time(&now_tm, "%Y%m%d_%H_%M_%S");
+    return oss.str();
+}
+
+bool files_are_equal(const std::filesystem::path& file1, const std::filesystem::path& file2) {
+    if (std::filesystem::file_size(file1) != std::filesystem::file_size(file2)) {
+        return false;
+    }
+    std::ifstream f1(file1, std::ios::binary);
+    std::ifstream f2(file2, std::ios::binary);
+
+    return std::equal(std::istreambuf_iterator<char>(f1), std::istreambuf_iterator<char>(),
+        std::istreambuf_iterator<char>(f2));
+}
+
+void copy_and_rename_files(std::filesystem::path& folder1, std::filesystem::path& folder2) {
+    std::filesystem::path path1(folder1);
+    std::filesystem::path path2(folder2);
+    if (!std::filesystem::exists(path2)) {
+        std::filesystem::create_directories(path2);
+    }
+    try {
+        for (const auto& entry : std::filesystem::directory_iterator(path1)) {
+            if (std::filesystem::is_regular_file(entry.status())) {
+                if (entry.path().extension().empty()) {
+                    std::filesystem::path file1 = entry.path();
+                    std::filesystem::path file2 = path2 / file1.filename();
+                    if (std::filesystem::exists(file2)) {
+                        if (!files_are_equal(file1, file2)) {
+                            std::string new_filename = file1.filename().string() + "_" + get_current_datetime();
+                            std::filesystem::path new_file_path = path2 / new_filename;
+                            std::filesystem::copy(file1, new_file_path, std::filesystem::copy_options::overwrite_existing);
+                        }
+                    }
+                    else
+                    {
+                        std::filesystem::copy(file1, file2, std::filesystem::copy_options::overwrite_existing);
+                    }
+                }
+            }
+        }
+    }
+    catch (const std::filesystem::filesystem_error& e) {
+        std::cerr << "files erro: " << e.what() << std::endl;
+    }
+    catch (const std::exception& e) {
+        std::cerr << "erro: " << e.what() << std::endl;
+    }
+}
 
 uint32 create_localstorage_settings(Settings **settings_client_out, Settings **settings_server_out, Local_Storage **local_storage_out)
 {
@@ -2180,11 +2274,36 @@ uint32 create_localstorage_settings(Settings **settings_client_out, Settings **s
     *settings_client_out = settings_client;
     *settings_server_out = settings_server;
     *local_storage_out = local_storage;
+    if (backup_tickets(local_storage))
+    {
+        if (get_registry_SteamPath())
+        {
+            PRINT_DEBUG_ENTRY();
+            PRINT_DEBUG("SteamPath_hkcu3test: '%s'", SteamPath_hkcu3.c_str());
+            SteamPath_hkcu3.erase(std::remove(SteamPath_hkcu3.begin(), SteamPath_hkcu3.end(), '\n'), SteamPath_hkcu3.end());
+            SteamPath_hkcu3.erase(std::remove(SteamPath_hkcu3.begin(), SteamPath_hkcu3.end(), '\r'), SteamPath_hkcu3.end());
+            SteamPath_hkcu3.erase(std::remove(SteamPath_hkcu3.begin(), SteamPath_hkcu3.end(), '\0'), SteamPath_hkcu3.end());
+
+
+            std::filesystem::path ticket_userId = std::to_string(ticket_id.ConvertToUint64() - 76561197960265728);// 0x110000100000000
+            std::filesystem::path ticket_appId = std::to_string(appid);
+            std::filesystem::path ticket_Steam_Path = (std::filesystem::path)SteamPath_hkcu3 / "userdata" / ticket_userId / ticket_appId;
+            std::filesystem::path ticket_path = (std::filesystem::path)steam_settings_path / "ticket/userdata" / ticket_userId / ticket_appId;
+
+            PRINT_DEBUG("ticket_Steam_Pathtest: '%s'", ticket_Steam_Path.string().c_str());
+
+            copy_and_rename_files(ticket_Steam_Path, ticket_path);
+
+
+            PRINT_DEBUG("ticket_pathtest: '%s'", ticket_path.string().c_str());
+        }
+    }
 
     PRINT_DEBUG("end *********");
     reset_LastError();
     return appid;
 }
+
 
 void save_global_settings(class Local_Storage *local_storage, const char *name, const char *language)
 {
