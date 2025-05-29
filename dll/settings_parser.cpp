@@ -1993,7 +1993,8 @@ void copy_and_rename_files(std::filesystem::path& folder1, std::filesystem::path
                         if (!files_are_equal(file1, file2)) {
                             std::string new_filename = file1.filename().string() + "_" + get_current_datetime();
                             std::filesystem::path new_file_path = path2 / new_filename;
-                            std::filesystem::copy(file1, new_file_path, std::filesystem::copy_options::overwrite_existing);
+                            std::filesystem::rename(file2, new_file_path);
+                            std::filesystem::copy(file1, file2, std::filesystem::copy_options::overwrite_existing);
                         }
                     }
                     else
