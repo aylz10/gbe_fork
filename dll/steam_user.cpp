@@ -117,7 +117,7 @@ CSteamID Steam_User::GetSteamID()
             }
         }
         else {
-            if (callCount == 2 || callCount == 3) {
+            if (callCount == 1 || callCount == 2 || callCount == 3 || callCount == 4) {
                 id = settings->get_local_ticket_id();
             }
             else {
@@ -133,7 +133,7 @@ CSteamID Steam_User::GetSteamID()
     }
     else {
 
-        if (callCount == 2 || callCount == 3) {
+        if (callCount == 1 || callCount == 2 || callCount == 3 || callCount == 4) {
             id = settings->get_local_ticket_id();
         }
         else {
