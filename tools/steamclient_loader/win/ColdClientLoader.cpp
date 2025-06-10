@@ -62,6 +62,8 @@ static bool ResumeByDebugger{};
 
 static long PersistentMode{};
 
+static bool LocalUserdata{};
+
 static std::vector<uint8_t> exe_header{};
 static std::vector<std::string> dlls_to_inject{};
 
@@ -525,6 +527,8 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
     ExeCommandLine = local_ini.GetValue("SteamClient", "ExeCommandLine", "");
     AppId = local_ini.GetValue("SteamClient", "AppId", "");
     
+    LocalUserdata = local_ini.GetLongValue("SteamClient", "LocalUserdata", false);
+    
     // dlls to inject
     ForceInjectSteamClient = local_ini.GetBoolValue("Injection", "ForceInjectSteamClient", false);
     ForceInjectGameOverlayRenderer = local_ini.GetBoolValue("Injection", "ForceInjectGameOverlayRenderer", false);
@@ -547,6 +551,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
     logger.write("SteamClient::ExeRunDir: " + ExeRunDir);
     logger.write("SteamClient::ExeCommandLine: " + ExeCommandLine);
     logger.write("SteamClient::AppId: " + AppId);
+    logger.write("SteamClient::LocalUserdata: " + std::to_string(LocalUserdata));
     logger.write("SteamClient::SteamClient: " + ClientPath);
     logger.write("SteamClient::SteamClient64Dll: " + Client64Path);
     logger.write("SteamClient::PersistentMode: " + std::to_string(PersistentMode));
@@ -733,15 +738,17 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
         return 1;
     }
 
-    if (!patch_registry_hkcu_2()) {
-        cleanup_registry_hkcu();
-        cleanup_registry_hkcu_2();
-        cleanup_registry_hklm();
-        cleanup_registry_hkcs();
-    
-        logger.write("Unable to patch Registry (HKCU #2).");
-        MessageBoxA(NULL, "Unable to patch Registry (HKCU #2).", "ColdClientLoader", MB_ICONERROR);
-        return 1;
+    if (LocalUserdata) {
+        if (!patch_registry_hkcu_2()) {
+            cleanup_registry_hkcu();
+            cleanup_registry_hkcu_2();
+            cleanup_registry_hklm();
+            cleanup_registry_hkcs();
+        
+            logger.write("Unable to patch Registry (HKCU #2).");
+            MessageBoxA(NULL, "Unable to patch Registry (HKCU #2).", "ColdClientLoader", MB_ICONERROR);
+            return 1;
+        }
     }
 
     // this fails due to admin rights when Steam isn't installed, not a big deal
